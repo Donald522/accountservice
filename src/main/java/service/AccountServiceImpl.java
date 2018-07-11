@@ -7,9 +7,14 @@ import model.Account;
 import model.Transaction;
 
 import javax.inject.Inject;
+import java.util.Arrays;
 import java.util.Collection;
+import java.util.Collections;
+import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.locks.Lock;
+import java.util.function.BiConsumer;
+import java.util.function.BiFunction;
 
 /**
  * Created by Anton Tolkachev.
@@ -21,8 +26,13 @@ public class AccountServiceImpl implements AccountService {
     private static final String DEFAULT_CURRENCY = "EUR";
     private static final double INITIAL_AMOUNT = 100.0;
 
-    private final Striped<Lock> accountLocks = Striped.lazyWeakLock(2);
+    private static final BiConsumer<Map<String, Account>, Collection<Account>> INSERT_ACCOUNTS = (map, accounts) -> accounts.forEach(acc -> map.put(acc.getId(), acc));
 
+    private static final BiFunction<Map<String, Account>, Void, Collection<String>> LOAD_ALL_ACCOUNT_IDS = (map, placeHolder) -> map.keySet();
+
+    private static final BiFunction<Map<String, Account>, String, Account> LOAD_ACCOUNT_BY_ID = Map::get;
+
+    private final Striped<Lock> accountLocks = Striped.lazyWeakLock(2);
     private final AccountStorage accountStorage;
 
     @Inject
@@ -38,27 +48,28 @@ public class AccountServiceImpl implements AccountService {
                 .amount(INITIAL_AMOUNT)
                 .build();
 
-        accountStorage.storeAccount(account);
+        accountStorage.execute(INSERT_ACCOUNTS, Collections.singletonList(account));
+        accountStorage.commit();
         log.info("New account created: {}", account);
     }
 
     @Override
     public Collection<String> getAllAccountIds() {
         log.info("Loading all ids from storage");
-        return accountStorage.loadAllAccountIds();
+        return accountStorage.query(LOAD_ALL_ACCOUNT_IDS, null);
     }
 
     @Override
     public Account getAccountById(String id) {
-        Account account = accountStorage.loadAccountById(id);
+        Account account = accountStorage.query(LOAD_ACCOUNT_BY_ID, id);
         log.info("Found account for [id={}]: {}", id, account);
         return account;
     }
 
     @Override
     public void doTransaction(Transaction transaction) {
-        Account fromAccount = accountStorage.loadAccountById(transaction.getFromAccountId());
-        Account toAccount = accountStorage.loadAccountById(transaction.getToAccountId());
+        Account fromAccount = accountStorage.query(LOAD_ACCOUNT_BY_ID, transaction.getFromAccountId());
+        Account toAccount = accountStorage.query(LOAD_ACCOUNT_BY_ID, transaction.getToAccountId());
         if (Double.compare(fromAccount.getAmount(), transaction.getAmount()) < 0) {
             log.info("There is no enough money on the account: {}", fromAccount.getId());
             return;
@@ -77,9 +88,14 @@ public class AccountServiceImpl implements AccountService {
                         Account toAccountAfterTransaction = toAccount.toBuilder()
                                 .amount(toAccount.getAmount() + transaction.getAmount())
                                 .build();
-                        accountStorage.storeAccount(fromAccountAfterTransaction);
-                        accountStorage.storeAccount(toAccountAfterTransaction);
+
+                        accountStorage.execute(INSERT_ACCOUNTS, Arrays.asList(fromAccountAfterTransaction, toAccountAfterTransaction));
+                        accountStorage.commit();
                         break;
+                    } catch (Exception e) {
+                        log.error("Error occurred during accounts updating. Rolling back transaction: id = {}", transaction.getId(), e);
+                        accountStorage.rollback();
+                        throw new RuntimeException(e);
                     } finally {
                         fromAccountLock.unlock();
                         toAccountLock.unlock();

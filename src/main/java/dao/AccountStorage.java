@@ -2,7 +2,9 @@ package dao;
 
 import model.Account;
 
-import java.util.Collection;
+import java.util.Map;
+import java.util.function.BiConsumer;
+import java.util.function.BiFunction;
 
 /**
  * Created by Anton Tolkachev.
@@ -10,10 +12,12 @@ import java.util.Collection;
  */
 public interface AccountStorage {
 
-    void storeAccount(Account account);
+    <T, U> U query(BiFunction<Map<String, Account>, T, U> command, T parameter);
 
-    Account loadAccountById(String id);
+    <T> void execute(BiConsumer<Map<String, Account>, T> command, T parameter);
 
-    Collection<String> loadAllAccountIds();
+    void commit();
+
+    void rollback();
 
 }
