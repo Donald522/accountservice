@@ -33,6 +33,7 @@ public class AccountServiceImpl implements AccountService {
     private static final BiFunction<Map<String, Account>, String, Account> LOAD_ACCOUNT_BY_ID = Map::get;
 
     private final Striped<Lock> accountLocks = Striped.lazyWeakLock(2);
+
     private final AccountStorage accountStorage;
 
     @Inject
@@ -40,7 +41,7 @@ public class AccountServiceImpl implements AccountService {
         this.accountStorage = accountStorage;
     }
 
-    public void createAccount(String name) {
+    public String createAccount(String name) {
         Account account = Account.builder()
                 .id(UUID.randomUUID().toString())
                 .name(name)
@@ -51,6 +52,7 @@ public class AccountServiceImpl implements AccountService {
         accountStorage.execute(INSERT_ACCOUNTS, Collections.singletonList(account));
         accountStorage.commit();
         log.info("New account created: {}", account);
+        return account.getId();
     }
 
     @Override
@@ -67,12 +69,12 @@ public class AccountServiceImpl implements AccountService {
     }
 
     @Override
-    public void doTransaction(Transaction transaction) {
+    public long doTransaction(Transaction transaction) {
         Account fromAccount = accountStorage.query(LOAD_ACCOUNT_BY_ID, transaction.getFromAccountId());
         Account toAccount = accountStorage.query(LOAD_ACCOUNT_BY_ID, transaction.getToAccountId());
         if (Double.compare(fromAccount.getAmount(), transaction.getAmount()) < 0) {
-            log.info("There is no enough money on the account: {}", fromAccount.getId());
-            return;
+            log.info("There is no enough money on the account: {}. Transaction cancelled.", fromAccount.getId());
+            return transaction.getId();
         }
         Lock fromAccountLock = accountLocks.get(fromAccount.getId());
         Lock toAccountLock = accountLocks.get(toAccount.getId());
@@ -104,5 +106,6 @@ public class AccountServiceImpl implements AccountService {
             }
         }
         log.info("End transaction: id = {}", transaction.getId());
+        return transaction.getId();
     }
 }

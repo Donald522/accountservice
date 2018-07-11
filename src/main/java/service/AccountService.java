@@ -11,12 +11,12 @@ import java.util.Collection;
  */
 public interface AccountService {
 
-    void createAccount(String name);
+    String createAccount(String name);
 
     Collection<String> getAllAccountIds();
 
     Account getAccountById(String id);
 
-    void doTransaction(Transaction transaction);
+    long doTransaction(Transaction transaction);
 
 }

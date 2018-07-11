@@ -17,7 +17,7 @@ import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.Response;
 import java.util.Collection;
 import java.util.UUID;
-import java.util.function.Consumer;
+import java.util.function.Function;
 
 /**
  * Created by Anton Tolkachev.
@@ -70,13 +70,13 @@ public class AccountServiceController {
         return doPost(accountService::doTransaction, transaction);
     }
 
-    private <T> Response doPost(Consumer<T> function, T parameter) {
+    private <T, U> Response doPost(Function<T, U> function, T parameter) {
         try {
-            function.accept(parameter);
+            U result = function.apply(parameter);
+            return Response.status(200).entity(result).build();
         } catch (Exception e) {
             return Response.status(500).entity(e).build();
         }
-        return Response.status(200).build();
     }
 
 }
