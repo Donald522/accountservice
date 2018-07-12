@@ -18,4 +18,14 @@ public class Account {
     private String name;
     private String currency;
     private double amount;
+
+    public Account() {
+    }
+
+    public Account(String id, String name, String currency, double amount) {
+        this.id = id;
+        this.name = name;
+        this.currency = currency;
+        this.amount = amount;
+    }
 }

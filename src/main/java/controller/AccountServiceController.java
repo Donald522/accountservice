@@ -12,7 +12,6 @@ import javax.ws.rs.POST;
 import javax.ws.rs.Path;
 import javax.ws.rs.PathParam;
 import javax.ws.rs.Produces;
-import javax.ws.rs.QueryParam;
 import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.Response;
 import java.util.Collection;
@@ -50,21 +49,16 @@ public class AccountServiceController {
     @POST
     @Path("/create")
     @Consumes(MediaType.APPLICATION_JSON)
-    public Response createAccount(@QueryParam("name") String name) {
+    public Response createAccount(String name) {
         return doPost(accountService::createAccount, name);
     }
 
     @POST
     @Path("/transfer")
     @Consumes(MediaType.APPLICATION_JSON)
-    public Response doTransaction(@QueryParam("fromAccountId") String fromAccountId,
-                              @QueryParam("toAccountId") String toAccountId,
-                              @QueryParam("amount") double amount) {
-        Transaction transaction = Transaction.builder()
+    public Response doTransaction(Transaction rowTransaction) {
+        Transaction transaction = rowTransaction.toBuilder()
                 .id(UUID.randomUUID().getLeastSignificantBits())
-                .fromAccountId(fromAccountId)
-                .toAccountId(toAccountId)
-                .amount(amount)
                 .build();
 
         return doPost(accountService::doTransaction, transaction);
