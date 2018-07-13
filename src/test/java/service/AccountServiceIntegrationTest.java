@@ -75,7 +75,6 @@ public class AccountServiceIntegrationTest {
 
         Collection<String> ids = accountService.getAllAccountIds();
 
-        futures.clear();
         for (String id : ids) {
             TransactionTask task = new TransactionTask(id, targetAccountId);
             Future<?> future = executorService.submit(task);
@@ -107,7 +106,6 @@ public class AccountServiceIntegrationTest {
 
         Collection<String> ids = accountService.getAllAccountIds();
 
-        futures.clear();
         for (String id : ids) {
             TransactionTask task = new TransactionTask(id, targetAccountId);
             Future<?> future = executorService.submit(task);
@@ -135,6 +133,7 @@ public class AccountServiceIntegrationTest {
                 e.printStackTrace();
             }
         });
+        futures.clear();
     }
 
 }
