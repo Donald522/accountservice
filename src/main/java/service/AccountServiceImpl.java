@@ -70,42 +70,64 @@ public class AccountServiceImpl implements AccountService {
 
     @Override
     public long doTransaction(Transaction transaction) {
-        Account fromAccount = accountStorage.query(LOAD_ACCOUNT_BY_ID, transaction.getFromAccountId());
-        Account toAccount = accountStorage.query(LOAD_ACCOUNT_BY_ID, transaction.getToAccountId());
-        if (Double.compare(fromAccount.getAmount(), transaction.getAmount()) < 0) {
-            log.info("There is no enough money on the account: {}. Transaction cancelled.", fromAccount.getId());
+        if (transaction.getFromAccountId().equals(transaction.getToAccountId())) {
+            log.info("Attempt to perform transaction over the single account: {}", transaction.getFromAccountId());
             return transaction.getId();
         }
-        Lock fromAccountLock = accountLocks.get(fromAccount.getId());
-        Lock toAccountLock = accountLocks.get(toAccount.getId());
+
+        Lock fromAccountLock = accountLocks.get(transaction.getFromAccountId());
+        Lock toAccountLock = accountLocks.get(transaction.getToAccountId());
+
         while (true) {
             if (fromAccountLock.tryLock()) {
-                if (toAccountLock.tryLock()) {
-                    try {
-                        log.info("Start transaction: {}", transaction);
+                try {
+                    if (toAccountLock.tryLock()) {
+                        try {
+                            log.info("Start transaction: {}", transaction);
 
-                        Account fromAccountAfterTransaction = fromAccount.toBuilder()
-                                .amount(fromAccount.getAmount() - transaction.getAmount())
-                                .build();
-                        Account toAccountAfterTransaction = toAccount.toBuilder()
-                                .amount(toAccount.getAmount() + transaction.getAmount())
-                                .build();
+                            Account fromAccount = accountStorage.query(LOAD_ACCOUNT_BY_ID, transaction.getFromAccountId());
+                            Account toAccount = accountStorage.query(LOAD_ACCOUNT_BY_ID, transaction.getToAccountId());
 
-                        accountStorage.execute(INSERT_ACCOUNTS, Arrays.asList(fromAccountAfterTransaction, toAccountAfterTransaction));
-                        accountStorage.commit();
-                        break;
-                    } catch (Exception e) {
-                        log.error("Error occurred during accounts updating. Rolling back transaction: id = {}", transaction.getId(), e);
-                        accountStorage.rollback();
-                        throw new RuntimeException(e);
-                    } finally {
-                        fromAccountLock.unlock();
-                        toAccountLock.unlock();
+                            if (!isTransactionPossible(transaction, fromAccount, toAccount)) {
+                                return transaction.getId();
+                            }
+
+                            Account fromAccountAfterTransaction = fromAccount.toBuilder()
+                                    .amount(fromAccount.getAmount() - transaction.getAmount())
+                                    .build();
+                            Account toAccountAfterTransaction = toAccount.toBuilder()
+                                    .amount(toAccount.getAmount() + transaction.getAmount())
+                                    .build();
+
+                            accountStorage.execute(INSERT_ACCOUNTS, Arrays.asList(fromAccountAfterTransaction, toAccountAfterTransaction));
+                            accountStorage.commit();
+                            break;
+                        } catch (Exception e) {
+                            log.error("Error occurred during accounts updating. Rolling back transaction: id = {}", transaction.getId(), e);
+                            accountStorage.rollback();
+                            throw new RuntimeException(e);
+                        } finally {
+                            toAccountLock.unlock();
+                        }
                     }
+                } finally {
+                    fromAccountLock.unlock();
                 }
             }
         }
         log.info("End transaction: id = {}", transaction.getId());
         return transaction.getId();
+    }
+
+    private boolean isTransactionPossible(Transaction transaction, Account fromAccount, Account toAccount) {
+        if (fromAccount == null || toAccount == null) {
+            log.info("Attempt to perform transaction over the nonexistent account");
+            return false;
+        }
+        if (Double.compare(fromAccount.getAmount(), transaction.getAmount()) < 0) {
+            log.info("There is no enough money on the account: {}. Transaction cancelled.", fromAccount.getId());
+            return false;
+        }
+        return true;
     }
 }
